@@ -121,7 +121,7 @@ class Message:
         try:
             return f'{self.type}\n{xmltodict.parse(self.xml_content)}'
         except:
-            print(self.xml_content)
+            # print(self.xml_content)
             return f'{self.type}\n{self.xml_content}'
 
     def __lt__(self, other):
@@ -239,7 +239,7 @@ class ImageMessage(FileMessage):
         return data
 
     def to_text(self):
-        return f'【图片】'
+        return f'【图片】（{self.file_name}）'
 
 
 @dataclass
@@ -318,7 +318,7 @@ class AudioMessage(FileMessage):
 
     def to_text(self):
         # return f'{self.server_id}\n{self.type}\n{xmltodict.parse(self.xml_content)}'
-        return f'【语音】{self.audio_text}'
+        return f'【语音】{self.audio_text} {self.file_name}'
 
 
 @dataclass

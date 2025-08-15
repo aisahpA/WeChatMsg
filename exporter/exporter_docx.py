@@ -45,16 +45,17 @@ class DocxExporter(ExporterBase):
             database,
             contact,
             output_dir,
-            type_,  # 导出文件类型
+            # type_,  # 导出文件类型
             message_types: set[MessageType] = None,  # 导出的消息类型
             time_range=None,  # 导出的日期范围
             group_members: set[str] = None,  # 群聊中只导出这些人的聊天记录
             progress_callback=None,  # 进度回调函数，func(progress:float)
             finish_callback=None,  # 导出完成回调函数
+            messages=None, # 所有消息，有值时直接使用，无值时从数据库中获取
             msg_num_per_docx=500  # 每个docx文档的消息数量
     ):
-        super().__init__(database, contact, output_dir, type_, message_types, time_range, group_members,
-                         progress_callback, finish_callback)  # 调用父类的构造函数
+        super().__init__(database, contact, output_dir, message_types, time_range, group_members,
+                         progress_callback, finish_callback, messages)  # 调用父类的构造函数
         self.msg_num_per_docx = msg_num_per_docx
 
     def add_text_in(self, paragraph, content):
@@ -88,14 +89,18 @@ class DocxExporter(ExporterBase):
         content = self.create_table(doc, is_send, avatar)
         if self.contact.is_chatroom():
             content.paragraphs[0].add_run(message.display_name + '\n')
-        message.set_file_name()
-        image_dir = os.path.join(self.origin_path, 'image')
-        image_path = decode_dat(
-            Me().xor_key,
-            os.path.join(Me().wx_dir, message.path),
-            os.path.join(image_dir, message.str_time[:7]),
-            message.file_name
-        )
+       
+        if message.path:
+            image_path = os.path.join(self.origin_path, message.path.lstrip('./'))
+        else:
+            message.set_file_name()
+            image_dir = os.path.join(self.origin_path, 'image')
+            image_path = decode_dat(
+                Me().xor_key,
+                os.path.join(Me().wx_dir, message.path),
+                os.path.join(image_dir, message.str_time[:7]),
+                message.file_name
+            )
         if image_path and os.path.exists(image_path):
             try:
                 run = content.paragraphs[0].add_run()
@@ -272,9 +277,10 @@ class DocxExporter(ExporterBase):
         return content_cell
 
     def export(self):
-        print(f"【开始导出 DOCX {self.contact.remark}】")
+        logger.info(f"【开始导出 DOCX {self.contact.remark}】")
         origin_path = self.origin_path
-        messages = self.database.get_messages(self.contact.wxid, time_range=self.time_range)
+        # messages = self.database.get_messages(self.contact.wxid, time_range=self.time_range)
+        messages = self.messages
         total_steps = len(messages)
         self.save_avatars()
 
@@ -332,6 +338,6 @@ class DocxExporter(ExporterBase):
                 except:
                     pass
                 newdoc()
-        self.update_progress_callback(1)
-        print(f"【完成导出 DOCX {self.contact.remark}】")
-        self.finish_callback(self.exporter_id)
+        # self.update_progress_callback(1)
+        logger.info(f"【完成导出 DOCX {self.contact.remark}】")
+        # self.finish_callback(self.exporter_id)

@@ -24,7 +24,9 @@ icon_files = {
 class HtmlExporter(ExporterBase):
 
     def export(self):
-        print(f"【开始导出 HTML {self.contact.remark}】")
+        logger.info(f"【开始导出 HTML {self.contact.remark}】")
+        messages = self.messages
+
         f_name = '.html'
         filename = os.path.join(self.origin_path, f'{self.contact.remark}{f_name}')
         filename = get_new_filename(filename)
@@ -39,17 +41,13 @@ class HtmlExporter(ExporterBase):
         f = open(filename, 'w', encoding='utf-8')
         html_head = html_head.replace("<title>出错了</title>", f"<title>{self.contact.remark}</title>")
         html_head = html_head.replace("<p id=\"title\">出错了</p>", f"<p id=\"title\">{self.contact.remark}</p>")
-        # avatar_urls, avatar_paths = self.get_avatar_urls()
-        avatar_urls = []
-        avatar_paths = []
-        html_head = html_head.replace("{{avatarPaths}}", json.dumps(avatar_paths))
-        html_head = html_head.replace("{{avatarUrls}}", json.dumps(avatar_urls)).replace('{{wxid}}',
-                                                                                         f'"{self.contact.wxid}"')
+        html_head = html_head.replace('{{wxid}}', f'"{self.contact.wxid}"')
+        # 下载头像，并替换头像为本地相对路径
+        avatar_paths_dict, avatar_urls_dict = self.replace_local_avatars(messages)
+        html_head = html_head.replace("{{avatarPathsDict}}", json.dumps(avatar_paths_dict))
+        html_head = html_head.replace("{{avatarUrlsDict}}", json.dumps(avatar_urls_dict))
         f.write(html_head)
-        messages = self.database.get_messages(self.contact.wxid, time_range=self.time_range)
 
-        # QMe().save_avatar(self.origin_path + '/avatar/' + Me().wxid + '.png')
-        # self.contact.save_avatar(self.origin_path + '/avatar/' + self.contact.wxid + '.png')
         date_id_map = {}
         timelineData = {}
         PageTimeline = {}
@@ -74,6 +72,7 @@ class HtmlExporter(ExporterBase):
         file_tasks = []
         audio_tasks = []
         image_dir = os.path.join(self.origin_path, 'image')
+        image_t_dir = os.path.join(self.origin_path, 'image_t')
         video_dir = os.path.join(self.origin_path, 'video')
         audio_dir = os.path.join(self.origin_path, 'voice')
         file_dir = os.path.join(self.origin_path, 'file')
@@ -96,12 +95,12 @@ class HtmlExporter(ExporterBase):
                     image_tasks.append(
                         (
                             os.path.join(Me().wx_dir, msg.thumb_path),
-                            os.path.join(image_dir, msg.str_time[:7]),
+                            os.path.join(image_t_dir, msg.str_time[:7]),
                             msg.file_name + '_t'
                         )
                     )
                     msg.path = f"./image/{msg.str_time[:7]}/{msg.file_name}"
-                    msg.thumb_path = f"./image/{msg.str_time[:7]}/{msg.file_name + '_t'}"
+                    msg.thumb_path = f"./image_t/{msg.str_time[:7]}/{msg.file_name + '_t'}"
                 elif type_ == MessageType.File:
                     origin_file_path = os.path.join(Me().wx_dir, msg.path)
                     file_tasks.append(
@@ -148,12 +147,12 @@ class HtmlExporter(ExporterBase):
                 image_tasks.append(
                     (
                         os.path.join(Me().wx_dir, message.thumb_path),
-                        os.path.join(image_dir, message.str_time[:7]),
+                        os.path.join(image_t_dir, message.str_time[:7]),
                         message.file_name + '_t'
                     )
                 )
                 message.path = f"./image/{message.str_time[:7]}/{message.file_name}"
-                message.thumb_path = f"./image/{message.str_time[:7]}/{message.file_name + '_t'}"
+                message.thumb_path = f"./image_t/{message.str_time[:7]}/{message.file_name + '_t'}"
             elif type_ == MessageType.File:
                 FileIndex.append(msg_index)
                 origin_file_path = os.path.join(Me().wx_dir, message.path)
@@ -202,7 +201,7 @@ class HtmlExporter(ExporterBase):
                 parser_merged(message)
             msg_index += 1
             is_select = True
-            html_json.append(message.to_json())
+            # html_json.append(message.to_json())
             if is_select:
                 select_msg_cnt += 1
                 # 把时间戳转换为格式化时间
@@ -231,19 +230,19 @@ class HtmlExporter(ExporterBase):
                 server_id_Page[str(server_id)] = curpage
                 server_id_Idx[str(server_id)] = select_msg_cnt - 1
 
-        # print(image_tasks)
-        # print(file_tasks)
-        # print(video_tasks)
-        # print(audio_tasks)
-        logger.info('解析图片')
+        logger.info(f'解析图片： {len(image_tasks)}')
         # 使用多进程，导出所有图片
-        batch_decode_image_multiprocessing(Me().xor_key, image_tasks)
-        print('开始复制文件')
-        logger.info(f'开始复制{len(video_tasks + file_tasks)}')
+        decode_image_results = batch_decode_image_multiprocessing(Me().xor_key, image_tasks)
+        # 设置图片的后缀
+        self.udpate_image_ext(decode_image_results, messages)
+        for message in messages:
+            html_json.append(message.to_json())
+        
+        logger.info(f'开始复制：{len(video_tasks)}个视频，{len(file_tasks)}个文件')
         # 使用多线程，复制文件、视频到导出文件夹
         copy_files(video_tasks + file_tasks)
-        print('开始导出语音')
-        logger.info('开始导出语音')
+        
+        logger.info(f'开始导出语音：{len(audio_tasks)}')
         decode_audios(audio_tasks)
 
         AllIndex = list(range(len(html_json)))
@@ -274,8 +273,7 @@ class HtmlExporter(ExporterBase):
                 elif isinstance(value, dict):
                     dic[key] = dict_to_js(value)
             return dic
-
-        print('开始字符串转义')
+ 
         logger.info('开始字符串转义')
         # 字符串转义，防止JS出现语法错误
         html_data = []
@@ -292,6 +290,39 @@ class HtmlExporter(ExporterBase):
         with open(filename + '.json', 'w', encoding='utf-8') as f:
             json.dump(html_json, f, ensure_ascii=False, indent=4)
 
-        self.update_progress_callback(1)
-        print(f"【完成导出 HTML {self.contact.remark}】{len(messages)}")
-        self.finish_callback(self.exporter_id)
+        # self.update_progress_callback(1)
+        logger.info(f"【完成导出 HTML {self.contact.remark}】{len(messages)}条消息")
+        # self.finish_callback(self.exporter_id)
+
+    def udpate_image_ext(self, decode_image_results, messages):
+        """
+        更新图片后缀
+        """
+        if not decode_image_results: return
+
+        def update_image_path(msg, ext):
+            if not ext: return
+            msg.file_name = msg.file_name + '.' + ext
+            msg.file_type = ext
+            msg.path = msg.path + '.' + ext
+            msg.thumb_path = msg.thumb_path + '.' + ext
+
+        def update_merged_image_ext(merged_message, image_name_ext_dict):
+            for msg in merged_message.messages:
+                if msg.type == MessageType.Image:
+                    update_image_path(msg, image_name_ext_dict.get(msg.file_name))
+                elif msg.type == MessageType.MergedMessages:
+                    update_merged_image_ext(msg, image_name_ext_dict)
+        
+        image_name_ext_dict = {}
+        for image_full_path in decode_image_results:
+            if image_full_path:
+                image_name_ext = os.path.basename(image_full_path).split('.')
+                image_name_ext_dict[image_name_ext[0]] = image_name_ext[1]
+
+        for msg in messages:
+            if msg.type == MessageType.Image:
+                update_image_path(msg, image_name_ext_dict.get(msg.file_name))
+            elif msg.type == MessageType.MergedMessages:
+                update_merged_image_ext(msg, image_name_ext_dict)
+    

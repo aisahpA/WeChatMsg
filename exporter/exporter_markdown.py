@@ -4,6 +4,7 @@ import re
 from exporter.exporter import ExporterBase
 from wxManager import MessageType, Message
 from wxManager.model import QuoteMessage, LinkMessage
+from wxManager.log import logger
 
 
 def parser_date(str_date):
@@ -25,6 +26,12 @@ def escape_markdown(text):
 
 
 class MarkdownExporter(ExporterBase):
+
+    def __init__(self, html_export: ExporterBase):
+        super().__init__(html_export.database, html_export.contact, html_export.output_dir)
+        self.messages = html_export.messages
+        self.origin_path = html_export.origin_path      
+
     def title(self, message):
         str_time = message.str_time
         return f'**{str_time[11:]} {escape_markdown(message.display_name)}**:'
@@ -37,13 +44,14 @@ class MarkdownExporter(ExporterBase):
 
     def image(self, doc, message):
         doc.write(
-            f'''{self.title(message)} ![图片]({message.path})\n\n'''
+            f'''{self.title(message)} ![图片|400]({message.path})\n\n'''
         )
 
     def audio(self, doc, message):
-        voice_to_text = self.database.get_audio_text(message.server_id)
+        # voice_to_text = self.database.get_audio_text(message.server_id)
         doc.write(
-            f'''{self.title(message)} [语音] {voice_to_text}\n\n'''
+            # f'''{self.title(message)} [语音] {voice_to_text}\n\n'''
+            f'''{self.title(message)} ![语音]({message.path})\n\n'''
         )
 
     def emoji(self, doc, message):
@@ -72,7 +80,7 @@ class MarkdownExporter(ExporterBase):
 
     def video(self, doc, message):
         doc.write(
-            f'''{self.title(message)}\n[视频]\n\n'''
+            f'''{self.title(message)} ![视频]({message.path})\n\n'''
         )
 
     def music_share(self, doc, message: LinkMessage):
@@ -141,7 +149,8 @@ class MarkdownExporter(ExporterBase):
         origin_path = self.origin_path
         os.makedirs(origin_path, exist_ok=True)
         filename = os.path.join(origin_path, self.contact.remark + '.md')
-        messages = self.database.get_messages(self.contact.wxid, time_range=self.time_range)
+        # messages = self.database.get_messages(self.contact.wxid, time_range=self.time_range)
+        messages = self.messages
         total_steps = len(messages)
         num = 1
         years = set()
@@ -205,6 +214,6 @@ class MarkdownExporter(ExporterBase):
                     self.personal_business_card(f, message)
                 elif type_ == MessageType.Position:
                     self.position(f, message)
-        self.update_progress_callback(1)
+        # self.update_progress_callback(1)
         print(f"【完成导出 Markdown {self.contact.remark}】")
-        self.finish_callback(self.exporter_id)
+        # self.finish_callback(self.exporter_id)

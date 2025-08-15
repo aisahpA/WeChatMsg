@@ -3,6 +3,7 @@ import traceback
 
 from wxManager import MessageType
 from wxManager.model import Message
+from wxManager.log import logger
 from exporter.exporter import ExporterBase, get_new_filename
 
 
@@ -21,7 +22,8 @@ class TxtExporter(ExporterBase):
         os.makedirs(origin_path, exist_ok=True)
         filename = os.path.join(origin_path, self.contact.remark + '.txt')
         filename = get_new_filename(filename)
-        messages = self.database.get_messages(self.contact.wxid, time_range=self.time_range)
+        # messages = self.database.get_messages(self.contact.wxid, time_range=self.time_range)
+        messages = self.messages
         total_steps = len(messages)
         txt_res = []
         for index, message in enumerate(messages):
@@ -32,6 +34,6 @@ class TxtExporter(ExporterBase):
             txt_res.append(f'{self.title(message)}\n{message.to_text()}')
         with open(filename, mode='w', newline='', encoding='utf-8') as f:
             f.write('\n\n'.join(txt_res))
-        self.update_progress_callback(1)
+        # self.update_progress_callback(1)
         print(f"【完成导出 TXT {self.contact.remark}】")
-        self.finish_callback(self.exporter_id)
+        # self.finish_callback(self.exporter_id)

@@ -8,33 +8,72 @@
 @File        : wxManager-2-contact.py 
 @Description : 
 """
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 import time
 
+from typing import List
 from wxManager import DatabaseConnection
+from wxManager.model import Contact
 
-db_dir = ''  # 第一步解析后的数据库路径，例如：./wxid_xxxx/db_storage
-db_version = 4  # 数据库版本，4 or 3
+def export():
+    """导出联系人信息"""
+    st = time.time()
 
-conn = DatabaseConnection(db_dir, db_version)  # 创建数据库连接
-database = conn.get_interface()  # 获取数据库接口
+    db_dir = ''  # 第一步解析后的数据库路径，例如：./wxid_xxxx/Msg
+    db_version = 3  # 数据库版本，4 or 3
+    output_dir = ''  # 输出文件夹
 
-st = time.time()
-cnt = 0
-contacts = database.get_contacts()
-for contact in contacts:
-    print(contact)
-    contact.small_head_img_blog = database.get_avatar_buffer(contact.wxid)
-    cnt += 1
-    if contact.is_chatroom:
-        print('*' * 80)
-        print(contact)
-        chatroom_members = database.get_chatroom_members(contact.wxid)
-        print(contact.wxid, '群成员个数：', len(chatroom_members))
-        for wxid, chatroom_member in chatroom_members.items():
-            chatroom_member.small_head_img_blog = database.get_avatar_buffer(wxid)
-            print(chatroom_member)
-            cnt += 1
+    conn = DatabaseConnection(db_dir, db_version)  # 创建数据库连接
+    database = conn.get_interface()  # 获取数据库接口
+    contacts = database.get_contacts() # 获取所有联系人
+    _export_contacts(database, contacts, output_dir)
 
-et = time.time()
+    et = time.time()
+    print(f'{_count_contact_num(contacts)} 耗时：{et - st:.2f}s')
 
-print(f'联系人个数：{cnt} 耗时：{et - st:.2f}s')
+def _export_contacts(database, contacts:List[Contact], output_dir: str):
+    # 排序
+    contacts = sorted(contacts, key=lambda x: x.wxid, reverse=False)
+
+    contact_info_list = []
+    # 添加统计信息
+    contact_info_list.append(_count_contact_num(contacts))
+    contact_info_list.append(f'{"-" * 80}')
+
+    # 添加每个联系人的信息
+    for contact in contacts:
+        if contact.is_chatroom():
+            info = f'{contact.wxid:<{25}}\t{contact.nickname:<{30}}\t{len(database.get_chatroom_members(contact.wxid))}人'
+        else:
+            remark = contact.remark if contact.remark != contact.nickname and not contact.is_open_im() else ""
+            info = f'{contact.wxid:<{25}}\t{contact.nickname:<{30}}\t{remark}'
+        contact_info_list.append(info)
+        # print(contact_info_list[-1])
+
+    # 导出文件
+    filename = os.path.join(output_dir, '联系人.txt')
+    with open(filename, mode='w', newline='', encoding='utf-8') as f:
+        f.write('\n'.join(contact_info_list))
+    print(f'联系人导出成功，在{filename}路径下')
+
+def _count_contact_num(contacts:List[Contact]) -> str:
+    chatroom_num = 0
+    open_im_num = 0
+    public_num = 0
+    normal_num = 0
+    for contact in contacts:
+        if contact.is_chatroom():
+            chatroom_num += 1
+        elif contact.is_open_im():
+            open_im_num += 1
+        elif contact.is_public():
+            public_num += 1
+        else:
+            normal_num += 1
+    return f'共有{len(contacts)}个联系人，{chatroom_num}个群聊，{open_im_num}个OpenIM，{public_num}个公众号，{normal_num}个普通联系人'
+
+
+if __name__ == '__main__':
+    export()

@@ -10,6 +10,8 @@ import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Tuple
+import requests
+from urllib.parse import urlparse
 
 import pysilk
 
@@ -24,6 +26,7 @@ def makedirs(path):
     if not os.path.exists(path):
         os.makedirs(path, exist_ok=True)
     os.makedirs(os.path.join(path, 'image'), exist_ok=True)
+    os.makedirs(os.path.join(path, 'image_t'), exist_ok=True)
     os.makedirs(os.path.join(path, 'emoji'), exist_ok=True)
     os.makedirs(os.path.join(path, 'video'), exist_ok=True)
     os.makedirs(os.path.join(path, 'voice'), exist_ok=True)
@@ -87,12 +90,13 @@ class ExporterBase(ExporterBaseBase):
             database: DataBaseInterface,
             contact: Contact,
             output_dir,
-            type_=FileType.TXT,  # 导出文件类型
+            # type_=FileType.TXT,  # 导出文件类型
             message_types: set[MessageType] = None,  # 导出的消息类型
             time_range=None,  # 导出的日期范围
             group_members: set[str] = None,  # 群聊中只导出这些人的聊天记录
             progress_callback=None,  # 进度回调函数，func(progress:float)
-            finish_callback=None  # 导出完成回调函数
+            finish_callback=None,  # 导出完成回调函数
+            messages=None # 所有消息，有值时直接使用，无值时从数据库中获取
     ):
         """
         @param database:
@@ -103,6 +107,8 @@ class ExporterBase(ExporterBaseBase):
         @param time_range: 导出的日期范围
         @param group_members: 群聊中筛选的群成员
         @param progress_callback: 导出进度回调函数
+        @param finish_callback: 导出完成回调函数
+        @param messages: 要导出的消息
         """
         super().__init__()
         if progress_callback:
@@ -120,7 +126,7 @@ class ExporterBase(ExporterBaseBase):
         self.avatar_paths = []  # 联系人的本地头像地址（写入HTML）
         self.message_types = message_types  # 导出的消息类型
         self.contact: Contact = contact  # 联系人
-        self.output_type = type_  # 导出文件类型
+        # self.output_type = type_  # 导出文件类型
         self.total_num = 1  # 总的消息数量
         self.num = 0  # 当前处理的消息数量
         self.last_timestamp = 0
@@ -128,8 +134,9 @@ class ExporterBase(ExporterBaseBase):
         self.group_contacts = {}  # 群聊里的所有联系人
         self.group_members = group_members  # 要导出的群聊成员（用于群消息筛选）
         self.group_members_set = group_members
-        self.origin_path = os.path.join(output_dir, '聊天记录', f'{self.contact.remark}({self.contact.wxid})')
-        makedirs(self.origin_path)
+        self.output_dir = output_dir
+        self.messages = messages
+        self.origin_path = ''
 
     def print_progress(self, progress):
         logger.info(f'导出进度：{progress * 100:.2f}%')
@@ -166,7 +173,31 @@ class ExporterBase(ExporterBaseBase):
         # 判断该消息是否应该导出
         return self._is_select_by_type(message) and self._is_select_by_contact(message)
 
+    def _init_dirs(self):
+        if self.origin_path: return
+
+        def get_simple_time_str(timestamp):
+            return time.strftime('%Y%m%d', time.localtime(timestamp))
+        
+        # 设置文件夹的名称
+        begin_time_str = get_simple_time_str(self.messages[0].timestamp)
+        end_time_str = get_simple_time_str(self.messages[-1].timestamp)
+        folder_name = f'{end_time_str}-{begin_time_str}_{self.contact.remark}({self.contact.wxid})'
+        self.origin_path = os.path.join(self.output_dir, '聊天记录', folder_name)
+
+        # 创建所有文件夹
+        makedirs(self.origin_path)
+
     def run(self):
+        # 查询消息
+        if not self.messages:
+            self.messages = self.database.get_messages(self.contact.wxid, time_range=self.time_range)
+        if not self.messages:
+            logger.warning(f'{self.contact.remark}({self.contact.wxid})，没有消息可导出')
+            return False      
+        # 初始化文件夹
+        self._init_dirs()      
+        # 导出聊天记录
         self.export()
 
     def export(self):
@@ -180,6 +211,92 @@ class ExporterBase(ExporterBaseBase):
             self.last_timestamp = timestamp
             return True
         return False
+   
+    def replace_local_avatars(self, messages):
+        """
+        下载并替换本地头像
+        
+        @param messages: 消息列表
+        @return: 头像路径字典
+        """
+        if self.contact.is_chatroom():
+            for message in messages:
+                wxid = message.sender_id
+                if wxid not in self.avatar_paths_dict:
+                    avatar_path = self._save_local_avatar(wxid, message.avatar_src)
+                    self.avatar_paths_dict[wxid] = avatar_path
+                    self.avatar_urls_dict[wxid] = message.avatar_src
+                    message.avatar_src = avatar_path
+                else:
+                    message.avatar_src = self.avatar_paths_dict[wxid]
+        else:
+            self.avatar_paths_dict[Me().wxid] = self._save_local_avatar(Me().wxid, Me().small_head_img_url)
+            self.avatar_paths_dict[self.contact.wxid] = self._save_local_avatar(self.contact.wxid, self.contact.small_head_img_url) 
+            self.avatar_urls_dict[self.contact.wxid] = self.contact.small_head_img_url
+            for message in messages:
+                message.avatar_src = self.avatar_paths_dict.get(message.sender_id)          
+        return self.avatar_paths_dict, self.avatar_urls_dict
+    
+    def _save_local_avatar(self, wxid, avatar_src):
+        img_name = f'{wxid}.png'
+        avatar_path = os.path.join(self.origin_path, 'avatar', img_name)
+        avatar_buffer = self.database.get_avatar_buffer(wxid)
+        if avatar_buffer:
+            # 使用本地缓存
+            try:
+                with open(avatar_path, 'wb') as f:
+                    f.write(avatar_buffer)
+            except:
+                logger.error(traceback.format_exc())
+        elif avatar_src:     
+            # 使用微信头像地址远程下载头像
+            avatar_folder = os.path.join(self.origin_path, 'avatar')
+            self._download_image_from_url(avatar_src, avatar_folder, img_name)
+        else:
+            return ''
+        return f'./avatar/{img_name}'
+
+    def _download_image_from_url(self, image_url, save_path, filename=None):
+        """
+        从指定URL下载图片并保存到指定路径
+        
+        :param image_url: 图片的URL地址
+        :param save_path: 保存图片的目录路径
+        :param filename: 保存的文件名（可选，默认使用URL中的文件名）
+        :return: 保存的文件路径，如果失败返回None
+        """
+        try:
+            # 创建保存目录
+            os.makedirs(save_path, exist_ok=True)
+            
+            # 如果没有指定文件名，则从URL中提取
+            if not filename:
+                parsed_url = urlparse(image_url)
+                filename = os.path.basename(parsed_url.path)
+                # 如果URL中没有明确的文件名，则生成一个
+                if not filename or '.' not in filename:
+                    filename = f"image_{int(time.time())}.jpg"
+            
+            # 完整的文件路径
+            full_path = os.path.join(save_path, filename)
+            
+            # 如果文件已存在，则直接返回
+            if os.path.exists(full_path):
+                return filename
+            
+            # 下载图片
+            response = requests.get(image_url, stream=True, timeout=30)
+            response.raise_for_status()  # 检查请求是否成功
+            
+            # 保存图片
+            with open(full_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            
+            return full_path
+        except Exception as e:
+            logger.error(f"下载图片失败: {image_url}, 错误: {str(e)}")
+            return None
 
     def save_avatars(self):
         if self.contact.is_chatroom():
@@ -491,8 +608,8 @@ def copy_file(source_file, destination_file):
         except:
             pass
             # logger.error(traceback.format_exc())
-        finally:
-            print(f'复制:{destination_file}')
+        # finally:
+            # print(f'复制:{destination_file}')
             # logger.info(f'复制:{destination_file}')
 
 
@@ -574,10 +691,10 @@ def decode_audio_to_mp3(media_buffer, output_dir, filename):
             # system(cmd)
             # 使用subprocess.run()执行命令
             subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        # if os.path.exists(silk_path):
-        #     os.remove(silk_path)
-        # if os.path.exists(pcm_path):
-        #     os.remove(pcm_path)
+        if os.path.exists(silk_path):
+            os.remove(silk_path)
+        if os.path.exists(pcm_path):
+            os.remove(pcm_path)
     except Exception as e:
         print(f"Error: {e}")
         logger.error(f'语音错误\n{traceback.format_exc()}')

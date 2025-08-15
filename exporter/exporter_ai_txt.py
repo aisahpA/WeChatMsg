@@ -3,6 +3,7 @@ import re
 from collections import defaultdict
 
 from wxManager import Message
+from wxManager.log import logger
 from exporter.exporter import ExporterBase, get_new_filename, remove_privacy_info
 
 
@@ -19,12 +20,13 @@ class AiTxtExporter(ExporterBase):
 
     def export(self):
         # 实现导出为txt的逻辑
-        print(f"【开始导出 TXT {self.contact.remark}】")
+        print(f"【开始导出 AI-TXT {self.contact.remark}】")
         origin_path = self.origin_path
         os.makedirs(origin_path, exist_ok=True)
         filename = os.path.join(origin_path, self.contact.remark + '_chat.txt')
         filename = get_new_filename(filename)
-        messages = self.database.get_messages(self.contact.wxid, time_range=self.time_range)
+        # messages = self.database.get_messages(self.contact.wxid, time_range=self.time_range)
+        messages = self.messages
         total_steps = len(messages)
         # 创建一个默认字典，用于按日期分组
         grouped_messages = defaultdict(list)
@@ -46,6 +48,6 @@ class AiTxtExporter(ExporterBase):
                 msgs = grouped_messages[date]
                 f.write(f"\n\n{'*' * 20}{date}{'*' * 20}\n")
                 f.write('\n'.join(msgs))
-        self.update_progress_callback(1)
-        print(f"【完成导出 TXT {self.contact.remark}】")
-        self.finish_callback(self.exporter_id)
+        # self.update_progress_callback(1)
+        print(f"【完成导出 AI-TXT {self.contact.remark}】")
+        # self.finish_callback(self.exporter_id)

@@ -9,40 +9,32 @@
 @Description : 
 """
 
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 import time
 from multiprocessing import freeze_support
 
 from exporter.config import FileType
 from exporter import HtmlExporter, TxtExporter, AiTxtExporter, DocxExporter, MarkdownExporter, ExcelExporter
 from wxManager import DatabaseConnection, MessageType
+from wxManager.db_main import DataBaseInterface
+from wxManager.log import logger
+from wxManager.model import Contact
 
 
 def export():
-    st = time.time()
 
-    db_dir = ''  # 解析后的数据库路径，例如：./db_storage
-    db_version = 4  # 数据库版本，4 or 3
+    db_dir = ''  # 解析后的数据库路径，例如：./wxid_xxxx/Msg
+    db_version = 3  # 数据库版本，4 or 3
+    output_dir = ''  # 输出文件夹
 
-    wxid = 'wxid_00112233'  # 要导出好友的wxid
-    output_dir = './data/'  # 输出文件夹
+    wxid = ''  # 要导出好友的wxid
 
     conn = DatabaseConnection(db_dir, db_version)  # 创建数据库连接
     database = conn.get_interface()  # 获取数据库接口
-
     contact = database.get_contact_by_username(wxid)  # 查找某个联系人
-    exporter = HtmlExporter(
-        database,
-        contact,
-        output_dir=output_dir,
-        type_=FileType.HTML,
-        message_types=None,  # 要导出的消息类型，默认全导出
-        time_range=['2020-01-01 00:00:00', '2035-03-12 00:00:00'],  # 要导出的日期范围，默认全导出
-        group_members=None  # 指定导出群聊里某个或者几个群成员的聊天记录
-    )
-
-    exporter.start()
-    et = time.time()
-    print(f'耗时：{et - st:.2f}s')
+    _export_one_contact(database, contact, output_dir) # 导出消息
 
 
 def batch_export():
@@ -52,73 +44,51 @@ def batch_export():
     """
     st = time.time()
 
-    db_dir = ''  # 解析后的数据库路径，例如：./db_storage
-    db_version = 4  # 数据库版本，4 or 3
-    output_dir = './data/'  # 输出文件夹
+    db_dir = ''  # 解析后的数据库路径，例如：./wxid_xxxx/Msg
+    db_version = 3  # 数据库版本，4 or 3
+    output_dir = ''  # 输出文件夹
+    not_export_wxids = [] # 不需要导出的微信ID集合
 
     conn = DatabaseConnection(db_dir, db_version)  # 创建数据库连接
     database = conn.get_interface()  # 获取数据库接口
 
-    contacts = database.get_contacts()  # 查找某个联系人
+    contacts = database.get_contacts()  # 查找所有联系人
+    contacts = sorted(contacts, key=lambda x: x.wxid, reverse=False)
     for contact in contacts:
-        exporter = HtmlExporter(
-            database,
-            contact,
-            output_dir=output_dir,
-            type_=FileType.HTML,
-            message_types={MessageType.Text, MessageType.Image, MessageType.LinkMessage},  # 要导出的消息类型，默认全导出
-            time_range=['2020-01-01 00:00:00', '2035-03-12 00:00:00'],  # 要导出的日期范围，默认全导出
-            group_members=None  # 指定导出群聊里某个或者几个群成员的聊天记录
-        )
-
-        exporter.start()
+        # 跳过公众号和OpenIM
+        if contact.is_public() or contact.is_open_im() or contact.wxid in not_export_wxids:
+            continue
+        _export_one_contact(database, contact, output_dir)
+       
     et = time.time()
-    print(f'耗时：{et - st:.2f}s')
+    logger.info(f'\n{'=' * 30}全部导出完成，耗时：{et - st:.2f}s')
 
-
-def batch_export_by_fmt():
-    """
-    批量导出多种格式
-    :return:
-    """
+def _export_one_contact(
+        database:DataBaseInterface,
+        contact:Contact, 
+        output_dir:str):
     st = time.time()
 
-    db_dir = ''  # 解析后的数据库路径，例如：./db_storage
-    db_version = 4  # 数据库版本，4 or 3
-
-    wxid = 'wxid_00112233'  # 要导出好友的wxid
-    output_dir = './data/'  # 输出文件夹
-
-    conn = DatabaseConnection(db_dir, db_version)  # 创建数据库连接
-    database = conn.get_interface()  # 获取数据库接口
-
-    contact = database.get_contact_by_username(wxid)  # 查找某个联系人
-    exporters = {
-        FileType.HTML: HtmlExporter,
-        FileType.TXT: TxtExporter,
-        FileType.AI_TXT: AiTxtExporter,
-        FileType.MARKDOWN: MarkdownExporter,
-        FileType.XLSX: ExcelExporter,
-        FileType.DOCX: DocxExporter
-    }
-    for file_type, exporter in exporters.items():
-        execute = exporter(
-            database,
-            contact,
-            output_dir=output_dir,
-            type_=file_type,
-            message_types=None,  # 要导出的消息类型，默认全导出
-            time_range=['2020-01-01 00:00:00', '2035-03-12 00:00:00'],  # 要导出的日期范围，默认全导出
-            group_members=None  # 指定导出群聊里某个或者几个群成员的聊天记录
-        )
-
-        execute.start()
+    messages = database.get_messages(contact.wxid, time_range=None)
+    if not messages:
+        logger.warning(f'{contact.remark}({contact.wxid}) 没有消息，停止导出！')
+        return
+    
+    html_export = HtmlExporter(database, contact, output_dir=output_dir, messages=messages)
+    html_export.start()
+    MarkdownExporter(html_export).start()
+    TxtExporter(database, contact, output_dir=output_dir, messages=messages).start()
+    AiTxtExporter(database, contact, output_dir=output_dir, messages=messages).start()
+    # ExcelExporter(database, contact, output_dir=output_dir, messages=messages).start()
+    # DocxExporter(database, contact, output_dir=output_dir, messages=messages).start()
+    
     et = time.time()
-    print(f'耗时：{et - st:.2f}s')
+    logger.info(f'耗时：{et - st:.2f}s\n{"-" * 20}')
+
+
 
 
 if __name__ == '__main__':
     freeze_support()
     export()
     # batch_export()
-    # batch_export_by_fmt()

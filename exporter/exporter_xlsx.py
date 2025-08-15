@@ -100,6 +100,91 @@ class ExcelExporter(ExporterBase):
                remark, nickname, 'more']
         return res
 
+    def to_excel_after_html(self):
+        from openpyxl.styles import Font
+        import openpyxl
+        from openpyxl.drawing.image import Image
+        from openpyxl.utils import get_column_letter
+        Image.MAX_IMAGE_PIXELS = None
+        logger.info(f"【开始导出 XLSX {self.contact.remark}】")
+        os.makedirs(self.origin_path, exist_ok=True)
+        filename = os.path.join(self.origin_path, f"{self.contact.remark}.xlsx")
+        filename = get_new_filename(filename)
+        columns = ['消息ID', '类型', '发送人', '时间', '内容', '备注', '昵称', '更多信息']
+        # messages = self.database.get_messages(self.contact.wxid, time_range=self.time_range)
+        messages = self.messages
+        new_workbook = openpyxl.Workbook()
+        new_sheet = new_workbook.create_sheet("聊天记录", 0)
+        member_sheet = new_workbook.create_sheet("成员信息", 1)
+        self.add_member_info(member_sheet)
+        new_sheet.append(columns)
+        total_num = len(messages)
+        image_index = {}
+
+        def deal_img(img_path, row):
+            try:
+                # 打开图片以获取其尺寸
+                with PILImage.open(img_path) as img:
+                    width, height = img.size
+                max_height = 200
+                # 计算缩放比例
+                scale = min(1.0, max_height / height)
+                # 缩放后的图片尺寸
+                scaled_width = int(width * scale)
+                scaled_height = int(height * scale)
+                # 插入图片
+                img = Image(img_path)
+                img.width = scaled_width
+                img.height = scaled_height
+                # 计算单元格的坐标
+                cell = f"{get_column_letter(5)}{row}"
+                # 将图片添加到工作表
+                new_sheet.add_image(img, cell)
+                # 设置行高
+                new_sheet.row_dimensions[row].height = scaled_height * 0.75  # 0.75 是像素到 Excel 单位的转换因子
+            except:
+                logger.error(traceback.format_exc())
+                pass
+
+        for index, message in enumerate(messages):
+            if not self._is_running:
+                break
+            if index and index % 1000 == 0:
+                self.update_progress_callback(index / total_num)
+            if not self.is_selected(message):
+                continue
+            try:
+                new_sheet.append(self.message_to_list(message))
+                self.row += 1
+            except:
+                logger.error(traceback.format_exc())
+                continue
+            type_ = message.type
+            if type_ == MessageType.Image:
+                img_path = os.path.join(self.origin_path, message.path.lstrip('./'))
+                if os.path.isfile(img_path):
+                    deal_img(img_path, self.row)
+            elif type_ == MessageType.File:
+                origin_file_path = os.path.join(self.origin_path, message.path.lstrip('./'))
+                if os.path.isfile(origin_file_path):
+                    add_hyperlink(new_sheet, self.row, 5, message.path)
+            elif type_ == MessageType.Video:
+                add_hyperlink(new_sheet, self.row, 5, message.path)
+            elif type_ == MessageType.Audio:
+                add_hyperlink(new_sheet, self.row, 5, message.path)
+    
+        # 获取列的字母表示（A、B、C...）
+        col_letter = get_column_letter(1)
+        # 设置整列的单元格格式为文本
+        for cell in new_sheet[col_letter]:
+            cell.number_format = "@"  # "@" 表示文本格式
+        try:
+            new_workbook.save(filename)
+        except PermissionError:
+            filename = '.'.join(filename.split('.')[:-1]) + str(int(time.time())) + '.xlsx'
+            new_workbook.save(filename)
+        logger.info(f"【完成导出 XLSX {self.contact.remark}】")
+
     def to_excel(self):
         from openpyxl.styles import Font
         import openpyxl
@@ -111,7 +196,8 @@ class ExcelExporter(ExporterBase):
         filename = os.path.join(self.origin_path, f"{self.contact.remark}.xlsx")
         filename = get_new_filename(filename)
         columns = ['消息ID', '类型', '发送人', '时间', '内容', '备注', '昵称', '更多信息']
-        messages = self.database.get_messages(self.contact.wxid, time_range=self.time_range)
+        # messages = self.database.get_messages(self.contact.wxid, time_range=self.time_range)
+        messages = self.messages
         new_workbook = openpyxl.Workbook()
         new_sheet = new_workbook.create_sheet("聊天记录", 0)
         member_sheet = new_workbook.create_sheet("成员信息", 1)
@@ -353,12 +439,13 @@ class ExcelExporter(ExporterBase):
         from openpyxl.drawing.image import Image
         from openpyxl.utils import get_column_letter
         Image.MAX_IMAGE_PIXELS = None
-        print(f"【开始导出 XLSX {self.contact.remark}】")
+        logger.info(f"【开始导出 XLSX {self.contact.remark}】")
         os.makedirs(self.origin_path, exist_ok=True)
         filename = os.path.join(self.origin_path, f"{self.contact.remark}.xlsx")
         filename = get_new_filename(filename)
         columns = ['类型', '收款单位', '日期', '时间', '金额', '付款方式', '收单机构', '更多信息']
-        messages = self.database.get_messages(self.contact.wxid, time_range=self.time_range)
+        # messages = self.database.get_messages(self.contact.wxid, time_range=self.time_range)
+        messages = self.messages
         new_workbook = openpyxl.Workbook()
         new_sheet = new_workbook.create_sheet("聊天记录", 0)
         new_sheet.append(columns)
@@ -368,8 +455,8 @@ class ExcelExporter(ExporterBase):
                 break
             if index % 1000 == 0:
                 self.update_progress_callback(index / total_num)
-            if not message.type in {MessageType.LinkMessage}:
-                continue
+            # if not message.type in {MessageType.LinkMessage}:
+            #     continue
             try:
                 card_data = wx_pay_data(message.xml_content)
                 date, str_time = message.str_time.split(' ')
@@ -401,9 +488,9 @@ class ExcelExporter(ExporterBase):
         except PermissionError:
             filename = '.'.join(filename.split('.')[:-1]) + str(int(time.time())) + '.xlsx'
             new_workbook.save(filename)
-        self.update_progress_callback(1)
-        self.finish_callback(self.exporter_id)
-        print(f"【完成导出 XLSX {self.contact.remark}】")
+        # self.update_progress_callback(1)
+        # self.finish_callback(self.exporter_id)
+        logger.info(f"【完成导出 XLSX {self.contact.remark}】")
 
     def wx_collect(self):
         from openpyxl.styles import Font
@@ -412,12 +499,13 @@ class ExcelExporter(ExporterBase):
         from openpyxl.utils import get_column_letter
         Image.MAX_IMAGE_PIXELS = None
 
-        print(f"【开始导出 XLSX {self.contact.remark}】")
+        logger.info(f"【开始导出 XLSX {self.contact.remark}】")
         os.makedirs(self.origin_path, exist_ok=True)
         filename = os.path.join(self.origin_path, f"{self.contact.remark}.xlsx")
         filename = get_new_filename(filename)
         columns = ['类型', '日期', '时间', '金额', '详细信息', '汇总', '备注', '更多信息']
-        messages = self.database.get_messages(self.contact.wxid, time_range=self.time_range)
+        # messages = self.database.get_messages(self.contact.wxid, time_range=self.time_range)
+        messages = self.messages
         new_workbook = openpyxl.Workbook()
         new_sheet = new_workbook.create_sheet("聊天记录", 0)
         new_sheet.append(columns)
@@ -427,8 +515,8 @@ class ExcelExporter(ExporterBase):
                 break
             if index % 1000 == 0:
                 self.update_progress_callback(index / total_num)
-            if not message.type in {MessageType.LinkMessage}:
-                continue
+            # if not message.type in {MessageType.LinkMessage}:
+            #     continue
             try:
                 card_data = wx_collection_data(message.xml_content)
                 date, str_time = message.str_time.split(' ')
@@ -451,9 +539,9 @@ class ExcelExporter(ExporterBase):
         except PermissionError:
             filename = '.'.join(filename.split('.')[:-1]) + str(int(time.time())) + '.xlsx'
             new_workbook.save(filename)
-        self.update_progress_callback(1)
-        self.finish_callback(self.exporter_id)
-        print(f"【完成导出 XLSX {self.contact.remark}】")
+        # self.update_progress_callback(1)
+        # self.finish_callback(self.exporter_id)
+        logger.info(f"【完成导出 XLSX {self.contact.remark}】")
 
     def wx_sport(self):
         from openpyxl.styles import Font
@@ -463,12 +551,13 @@ class ExcelExporter(ExporterBase):
         Image.MAX_IMAGE_PIXELS = None
 
 
-        print(f"【开始导出 XLSX {self.contact.remark}】")
+        logger.info(f"【开始导出 XLSX {self.contact.remark}】")
         os.makedirs(self.origin_path, exist_ok=True)
         filename = os.path.join(self.origin_path, f"{self.contact.remark}.xlsx")
         filename = get_new_filename(filename)
         columns = ['日期', '排名', '步数', '当日冠军', '当日冠军步数', '更多信息']
-        messages = self.database.get_messages(self.contact.wxid, time_range=self.time_range)
+        # messages = self.database.get_messages(self.contact.wxid, time_range=self.time_range)
+        messages = self.messages
         new_workbook = openpyxl.Workbook()
         new_sheet = new_workbook.create_sheet("聊天记录", 0)
         new_sheet.append(columns)
@@ -478,8 +567,8 @@ class ExcelExporter(ExporterBase):
                 break
             if index and index % 1000 == 0:
                 self.update_progress_callback(index / total_num)
-            if not message.type in {MessageType.LinkMessage}:
-                continue
+            # if not message.type in {MessageType.LinkMessage}:
+            #     continue
             try:
                 card_data = wx_sport(message.xml_content)
                 champion_name = ''
@@ -508,11 +597,11 @@ class ExcelExporter(ExporterBase):
         except PermissionError:
             filename = '.'.join(filename.split('.')[:-1]) + str(int(time.time())) + '.xlsx'
             new_workbook.save(filename)
-        self.update_progress_callback(1)
-        self.finish_callback(self.exporter_id)
-        print(f"【完成导出 XLSX {self.contact.remark}】")
+        # self.update_progress_callback(1)
+        # self.finish_callback(self.exporter_id)
+        logger.info(f"【完成导出 XLSX {self.contact.remark}】")
 
-    def run(self):
+    def export(self):
         if self.contact.is_public():
             if self.contact.wxid == 'gh_3dfda90e39d6':
                 self.wx_pay()
@@ -523,4 +612,5 @@ class ExcelExporter(ExporterBase):
             else:
                 self.public_to_excel()
         else:
-            self.to_excel()
+            # self.to_excel()
+            self.to_excel_after_html()

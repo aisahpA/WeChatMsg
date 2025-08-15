@@ -121,7 +121,12 @@ class Singleton:
         else:
             if username.endswith('@chatroom'):
                 msgbytes = MessageBytesExtra()
-                msgbytes.ParseFromString(message[10])
+                try:
+                    msgbytes.ParseFromString(message[10])
+                except Exception as e:
+                    logger.error(f'未知类型消息，wxid获取失败：{e}')
+                    logger.error(f'异常信息：{message}')
+                
                 for tmp in msgbytes.message2:
                     if tmp.field1 != 1:
                         continue
