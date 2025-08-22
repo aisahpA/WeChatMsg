@@ -550,9 +550,31 @@ def parser_record_item(recorditem, output_dir, wxid, msg_time, level=0):
             )
     return result
 
+def _deal_wxid_start_xml(xml_str, wxid):
+    """
+    处理特殊的XML字符串：wxid_xxx:\n<msg><?xml version="1.0"?>
+    """
+
+     # 移除开头的 wxid 前缀（如果存在）
+    if xml_str.startswith(wxid + ':\n'):
+        xml_str = xml_str.removeprefix(wxid + ':\n')
+    
+    # 确保XML声明在最开始（如果有）
+    if '<?xml' in xml_str and not xml_str.startswith('<?xml'):
+        # 找到XML声明并移动到开头
+        xml_decl_match = re.search(r'<\?xml[^>]*\?>', xml_str)
+        if xml_decl_match:
+            xml_decl = xml_decl_match.group()
+            xml_str = xml_str.replace(xml_decl, '', 1)
+            xml_str = xml_decl + xml_str.lstrip()
+    
+    return xml_str
 
 def parser_merged_messages(xml: str, output_dir, wxid, msg_time, level=0):
     try:
+        # 处理特殊的XML字符串
+        xml = _deal_wxid_start_xml(xml, wxid=wxid)
+        
         try:
             data_dic = xmltodict.parse(xml).get('msg', {})
         except:
