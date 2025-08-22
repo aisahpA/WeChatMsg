@@ -217,6 +217,17 @@ def process_xml(xml_string):
     processed_xml = re.sub(r'&#(\d+);', replace_entity, xml_string)
     return processed_xml
 
+def _parser_record_item_avatar(item):
+    """解析转发消息中每条消息头像"""
+    return item.get('sourceheadurl')
+
+def _parser_record_item_sender_id(item):
+    """解析转发消息中每条消息的发送者id"""
+    try:
+        sender_id = item.get('dataitemsource').get('fromusr')  
+    except:
+        sender_id = ''
+    return sender_id
 
 def parser_record_item(recorditem, output_dir, wxid, msg_time, level=0):
     xml_string = recorditem
@@ -255,7 +266,7 @@ def parser_record_item(recorditem, output_dir, wxid, msg_time, level=0):
                 if '上午' in str_time:
                     str_time = str_time.replace('上午 ', '上午')
                     time_format = '%Y-%m-%d 上午%H:%M'
-                    dt = datetime.strptime(str_time, time_format) + timedelta(hours=12)
+                    dt = datetime.strptime(str_time, time_format)
                 elif '下午' in str_time:
                     str_time = str_time.replace('下午 ', '下午')
                     time_format = '%Y-%m-%d 下午%H:%M'
@@ -279,6 +290,9 @@ def parser_record_item(recorditem, output_dir, wxid, msg_time, level=0):
                 logger.error(f'未知的时间格式:{str_time}')
                 dt = datetime.strptime('1970-01-01 00:00:00', '%Y-%m-%d %H:%M:%S')
 
+        sender_id = _parser_record_item_sender_id(item)
+        avatar_src = _parser_record_item_avatar(item)    
+
         if type_ == '1':
             # 纯文本
             content = item.get('datadesc')
@@ -295,9 +309,9 @@ def parser_record_item(recorditem, output_dir, wxid, msg_time, level=0):
                     type=MessageType.Text,
                     talker_id='',
                     is_sender=False,
-                    sender_id='',
+                    sender_id=sender_id,
                     display_name=item.get('sourcename'),
-                    avatar_src=item.get('sourceheadurl'),
+                    avatar_src=avatar_src,
                     status=0,
                     xml_content='',
                     content=content
@@ -318,9 +332,9 @@ def parser_record_item(recorditem, output_dir, wxid, msg_time, level=0):
                 type=MessageType.Image,
                 talker_id='',
                 is_sender=False,
-                sender_id='',
+                sender_id=sender_id,
                 display_name=item.get('sourcename'),
-                avatar_src=item.get('sourceheadurl'),
+                avatar_src=avatar_src,
                 status=0,
                 xml_content='',
                 md5=md5,
@@ -348,9 +362,9 @@ def parser_record_item(recorditem, output_dir, wxid, msg_time, level=0):
                 type=MessageType.Emoji,
                 talker_id='',
                 is_sender=False,
-                sender_id='',
+                sender_id=sender_id,
                 display_name=item.get('sourcename'),
-                avatar_src=item.get('sourceheadurl'),
+                avatar_src=avatar_src,
                 status=0,
                 xml_content='',
                 md5=md5,
@@ -381,9 +395,9 @@ def parser_record_item(recorditem, output_dir, wxid, msg_time, level=0):
                     type=MessageType.Audio,
                     talker_id='',
                     is_sender=False,
-                    sender_id='',
+                    sender_id=sender_id,
                     display_name=item.get('sourcename'),
-                    avatar_src=item.get('sourceheadurl'),
+                    avatar_src=avatar_src,
                     status=0,
                     xml_content='',
                     content='【转发语音不可播放】'
@@ -403,9 +417,9 @@ def parser_record_item(recorditem, output_dir, wxid, msg_time, level=0):
                     type=MessageType.Video,
                     talker_id='',
                     is_sender=False,
-                    sender_id='',
+                    sender_id=sender_id,
                     display_name=item.get('sourcename'),
-                    avatar_src=item.get('sourceheadurl'),
+                    avatar_src=avatar_src,
                     status=0,
                     xml_content='',
                     md5=md5,
@@ -431,9 +445,9 @@ def parser_record_item(recorditem, output_dir, wxid, msg_time, level=0):
                     type=MessageType.LinkMessage,
                     talker_id='',
                     is_sender=False,
-                    sender_id='',
+                    sender_id=sender_id,
                     display_name=item.get('sourcename'),
-                    avatar_src=item.get('sourceheadurl'),
+                    avatar_src=avatar_src,
                     status=0,
                     xml_content='',
                     href=web_item.get('url', ''),
@@ -467,9 +481,9 @@ def parser_record_item(recorditem, output_dir, wxid, msg_time, level=0):
                     type=MessageType.Position,
                     talker_id='',
                     is_sender=False,
-                    sender_id='',
+                    sender_id=sender_id,
                     display_name=item.get('sourcename'),
-                    avatar_src=item.get('sourceheadurl'),
+                    avatar_src=avatar_src,
                     status=0,
                     xml_content='',
                     x=x,
@@ -498,9 +512,9 @@ def parser_record_item(recorditem, output_dir, wxid, msg_time, level=0):
                     type=MessageType.File,
                     talker_id='',
                     is_sender=False,
-                    sender_id='',
+                    sender_id=sender_id,
                     display_name=item.get('sourcename'),
-                    avatar_src=item.get('sourceheadurl'),
+                    avatar_src=avatar_src,
                     status=0,
                     xml_content='',
                     path='',
@@ -522,9 +536,9 @@ def parser_record_item(recorditem, output_dir, wxid, msg_time, level=0):
                     type=MessageType.MergedMessages,
                     talker_id='',
                     is_sender=False,
-                    sender_id='',
+                    sender_id=sender_id,
                     display_name=item.get('sourcename'),
-                    avatar_src=item.get('sourceheadurl'),
+                    avatar_src=avatar_src,
                     status=0,
                     xml_content='',
                     title=item.get('datatitle'),

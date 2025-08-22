@@ -563,6 +563,12 @@ class MergedMessageFactory(MessageFactory, Singleton):
 
         def parser_merged(merged_messages, level):
             for index, inner_msg in enumerate(merged_messages):
+                # 处理头像
+                if not inner_msg.avatar_src and inner_msg.sender_id:
+                    inner_msg_contact = self.get_contact(inner_msg.sender_id, manager)
+                    if inner_msg_contact:
+                        inner_msg.avatar_src = inner_msg_contact.small_head_img_url
+                # 处理地址
                 if inner_msg.type == MessageType.Image:
                     if dir0:
                         img_suffix = f'FileStorage/MsgAttach/{hashlib.md5(username.encode("utf-8")).hexdigest()}/Thumb/{month}/{inner_msg.md5}_2.dat'

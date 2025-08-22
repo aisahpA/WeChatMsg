@@ -218,26 +218,25 @@ class ExporterBase(ExporterBaseBase):
         
         @param messages: 消息列表
         @return: 头像路径字典
-        """
-        if self.contact.is_chatroom():
-            for message in messages:
-                wxid = message.sender_id
-                if wxid not in self.avatar_paths_dict:
-                    avatar_path = self._save_local_avatar(wxid, message.avatar_src)
-                    self.avatar_paths_dict[wxid] = avatar_path
-                    self.avatar_urls_dict[wxid] = message.avatar_src
-                    message.avatar_src = avatar_path
-                else:
-                    message.avatar_src = self.avatar_paths_dict[wxid]
-        else:
-            self.avatar_paths_dict[Me().wxid] = self._save_local_avatar(Me().wxid, Me().small_head_img_url)
-            self.avatar_paths_dict[self.contact.wxid] = self._save_local_avatar(self.contact.wxid, self.contact.small_head_img_url) 
-            self.avatar_urls_dict[self.contact.wxid] = self.contact.small_head_img_url
-            for message in messages:
-                message.avatar_src = self.avatar_paths_dict.get(message.sender_id)          
+        """ 
+        def _dealwith_avatar(wxid, avatar_src):     
+            if wxid not in self.avatar_paths_dict:
+                avatar_path = self._save_local_avatar(wxid, avatar_src)
+                self.avatar_paths_dict[wxid] = avatar_path
+                self.avatar_urls_dict[wxid] = avatar_src           
+            return self.avatar_paths_dict[wxid]
+    
+        for message in messages:
+            message.avatar_src = _dealwith_avatar(message.sender_id, message.avatar_src)
+            if message.type == MessageType.MergedMessages:
+                for inner_msg in message.messages:
+                    inner_msg.avatar_src = _dealwith_avatar(inner_msg.sender_id, inner_msg.avatar_src)
+                    
         return self.avatar_paths_dict, self.avatar_urls_dict
     
     def _save_local_avatar(self, wxid, avatar_src):
+        if not wxid or wxid.endswith('@chatroom'):
+            return ''
         img_name = f'{wxid}.png'
         avatar_path = os.path.join(self.origin_path, 'avatar', img_name)
         avatar_buffer = self.database.get_avatar_buffer(wxid)
@@ -251,9 +250,18 @@ class ExporterBase(ExporterBaseBase):
         elif avatar_src:     
             # 使用微信头像地址远程下载头像
             avatar_folder = os.path.join(self.origin_path, 'avatar')
-            self._download_image_from_url(avatar_src, avatar_folder, img_name)
+            self._download_image_from_url(avatar_src, avatar_folder, img_name)  
         else:
-            return ''
+            # 使用默认头像
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            default_file_path = os.path.join(current_dir, 'resources', 'default_avatar.png')
+            with open(default_file_path, 'rb') as f:
+                avatar_buffer = f.read()
+            try:
+                with open(avatar_path, 'wb') as f:
+                    f.write(avatar_buffer)
+            except:
+                logger.error(traceback.format_exc())
         return f'./avatar/{img_name}'
 
     def _download_image_from_url(self, image_url, save_path, filename=None):
