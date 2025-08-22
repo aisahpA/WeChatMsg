@@ -22,44 +22,17 @@ python 2-contact.py
 
 ## 3、导出数据
 
-```python
-import time
-from multiprocessing import freeze_support
+执行 3-exporter.py
 
-from exporter.config import FileType
-from exporter import HtmlExporter, TxtExporter, AiTxtExporter, DocxExporter, MarkdownExporter, ExcelExporter
-from wxManager import DatabaseConnection, MessageType
+## 4、更新媒体文件创建时间
 
+下载安装 exiftool
+执行 4-update-time.py
 
-def export():
-    st = time.time()
+## 5、拷贝媒体文件到一处
 
-    db_dir = ''  # 解析后的数据库路径，例如：./db_storage
-    db_version = 4  # 数据库版本，4 or 3
+执行 5-copy-media.py
 
-    wxid = 'wxid_00112233'  # 要导出好友的wxid
-    output_dir = './data/'  # 输出文件夹
+## 6、压缩聊天记录
 
-    conn = DatabaseConnection(db_dir, db_version)  # 创建数据库连接
-    database = conn.get_interface()  # 获取数据库接口
-
-    contact = database.get_contact_by_username(wxid)  # 查找某个联系人
-    exporter = HtmlExporter(
-        database,
-        contact,
-        output_dir=output_dir,
-        type_=FileType.HTML,
-        message_types={MessageType.MergedMessages},  # 要导出的消息类型，默认全导出
-        time_range=['2020-01-01 00:00:00', '2035-03-12 00:00:00'],  # 要导出的日期范围，默认全导出
-        group_members=None  # 指定导出群聊里某个或者几个群成员的聊天记录
-    )
-
-    exporter.start()
-    et = time.time()
-    print(f'耗时：{et - st:.2f}s')
-
-
-if __name__ == '__main__':
-    freeze_support()
-    export()
-```
+执行 6-compress.py

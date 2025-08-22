@@ -23,31 +23,41 @@ from wxManager.log import logger
 from wxManager.model import Contact
 
 
-def export():
+def export_one():
+    """
+    导出单个联系人的聊天记录
+    """
 
     db_dir = ''  # 解析后的数据库路径，例如：./wxid_xxxx/Msg
     db_version = 3  # 数据库版本，4 or 3
     output_dir = ''  # 输出文件夹
 
     wxid = ''  # 要导出好友的wxid
+    message_types = [] # 导出的消息类型 MessageType，默认全部类型
+    time_range=[] # ['2025-01-01 00:00:00', '2025-12-31 23:59:59']  # 要导出的日期范围，默认全导出
 
+    # 导出消息
     conn = DatabaseConnection(db_dir, db_version)  # 创建数据库连接
     database = conn.get_interface()  # 获取数据库接口
     contact = database.get_contact_by_username(wxid)  # 查找某个联系人
-    _export_one_contact(database, contact, output_dir) # 导出消息
+    _export_one_contact(database, contact, output_dir, 
+                        message_types=message_types, 
+                        time_range=time_range,
+                        is_split_by_year=True)
 
-
-def batch_export():
+def export_all():
     """
-    批量导出HTML
-    :return:
+    批量导出所有联系人的聊天记录
     """
     st = time.time()
 
     db_dir = ''  # 解析后的数据库路径，例如：./wxid_xxxx/Msg
     db_version = 3  # 数据库版本，4 or 3
     output_dir = ''  # 输出文件夹
+
     not_export_wxids = [] # 不需要导出的微信ID集合
+    message_types = [] # 导出的消息类型 MessageType，默认全部类型
+    time_range=[] # ['2025-01-01 00:00:00', '2025-12-31 23:59:59']  # 要导出的日期范围，默认全导出
 
     conn = DatabaseConnection(db_dir, db_version)  # 创建数据库连接
     database = conn.get_interface()  # 获取数据库接口
@@ -58,22 +68,80 @@ def batch_export():
         # 跳过公众号和OpenIM
         if contact.is_public() or contact.is_open_im() or contact.wxid in not_export_wxids:
             continue
-        _export_one_contact(database, contact, output_dir)
+        _export_one_contact(database, contact, output_dir, 
+                            message_types=message_types,
+                            time_range=time_range,
+                            is_split_by_year=True)
        
     et = time.time()
-    logger.info(f'\n{'=' * 30}全部导出完成，耗时：{et - st:.2f}s')
+    logger.info(f'\n{'=' * 30}全部导出完成, 耗时：{et - st:.2f}s')
 
 def _export_one_contact(
         database:DataBaseInterface,
         contact:Contact, 
-        output_dir:str):
+        output_dir:str,
+        message_types: set[MessageType] = None,
+        time_range=None,
+        is_split_by_year=False,
+        spilt_limit_num=1000):
+    """
+    导出一个联系人
+    
+    Args:
+        database: 数据库接口
+        contact: 联系人
+        output_dir: 导出存放文件夹
+        message_types: 导出的消息类型，默认全部
+        time_range: 时间范围
+        is_split_by_year: 是否按年导出消息
+        spilt_limit_num: 按年导出消息时，每个年份至少要多少条消息，否则合并到下一年，默认1000条
+    """
     st = time.time()
 
-    messages = database.get_messages(contact.wxid, time_range=None)
+    # 查询消息
+    if message_types:
+        if len(message_types) == 1:
+            messages = database.get_messages_by_type(contact.wxid, 
+                                                     type_=message_types[0], 
+                                                     time_range=time_range)
+        else:
+            messages = database.get_messages(contact.wxid, time_range)
+            messages = [message for message in messages if message.type in message_types]
+    else:
+        messages = database.get_messages(contact.wxid, time_range)
     if not messages:
-        logger.warning(f'{contact.remark}({contact.wxid}) 没有消息，停止导出！')
+        logger.warning(f'{contact.remark}({contact.wxid}) 没有消息, 停止导出！\n{"-" * 20}')
         return
     
+    # 导出消息
+    if is_split_by_year and len(messages) > spilt_limit_num:
+        # 按年导出: messages 中 str_time 是格式化时间 2024-12-01 12:00:00
+        before_year = messages[0].str_time[:4]
+        year_part_messages = []
+        for message in messages:
+            year = message.str_time[:4]
+            if year == before_year:
+                year_part_messages.append(message)
+                continue
+            else:
+                before_year = year
+                if len(year_part_messages) > spilt_limit_num:
+                    _export_by_messages(database, contact, output_dir, year_part_messages)
+                    year_part_messages = []
+        if year_part_messages:
+            _export_by_messages(database, contact, output_dir, year_part_messages)
+    else:
+        # 整体导出
+        _export_by_messages(database, contact, output_dir, messages)
+    
+    et = time.time()
+    logger.info(f'耗时: {et - st:.2f}s\n{"-" * 20}')
+
+def _export_by_messages(
+        database:DataBaseInterface,
+        contact:Contact, 
+        output_dir:str,
+        messages):
     html_export = HtmlExporter(database, contact, output_dir=output_dir, messages=messages)
     html_export.start()
     MarkdownExporter(html_export).start()
@@ -81,14 +149,10 @@ def _export_one_contact(
     AiTxtExporter(database, contact, output_dir=output_dir, messages=messages).start()
     # ExcelExporter(database, contact, output_dir=output_dir, messages=messages).start()
     # DocxExporter(database, contact, output_dir=output_dir, messages=messages).start()
-    
-    et = time.time()
-    logger.info(f'耗时：{et - st:.2f}s\n{"-" * 20}')
-
 
 
 
 if __name__ == '__main__':
     freeze_support()
-    export()
-    # batch_export()
+    export_one()
+    # export_all()
