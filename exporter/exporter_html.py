@@ -230,7 +230,7 @@ class HtmlExporter(ExporterBase):
                 server_id_Page[str(server_id)] = curpage
                 server_id_Idx[str(server_id)] = select_msg_cnt - 1
 
-        logger.info(f'解析图片： {len(image_tasks)}')
+        logger.info(f'解析图片: {len(image_tasks)}')
         # 使用多进程，导出所有图片
         decode_image_results = batch_decode_image_multiprocessing(Me().xor_key, image_tasks)
         # 设置图片的后缀
@@ -238,11 +238,11 @@ class HtmlExporter(ExporterBase):
         for message in messages:
             html_json.append(message.to_json())
         
-        logger.info(f'开始复制：{len(video_tasks)}个视频，{len(file_tasks)}个文件')
+        logger.info(f'开始复制: {len(video_tasks)}个视频, {len(file_tasks)}个文件')
         # 使用多线程，复制文件、视频到导出文件夹
         copy_files(video_tasks + file_tasks)
         
-        logger.info(f'开始导出语音：{len(audio_tasks)}')
+        logger.info(f'开始导出语音: {len(audio_tasks)}')
         decode_audios(audio_tasks)
 
         AllIndex = list(range(len(html_json)))
@@ -274,7 +274,7 @@ class HtmlExporter(ExporterBase):
                     dic[key] = dict_to_js(value)
             return dic
  
-        logger.info('开始字符串转义')
+        print('开始字符串转义')
         # 字符串转义，防止JS出现语法错误
         html_data = []
         for item in copy.deepcopy(html_json):

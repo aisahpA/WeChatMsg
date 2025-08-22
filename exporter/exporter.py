@@ -139,7 +139,7 @@ class ExporterBase(ExporterBaseBase):
         self.origin_path = ''
 
     def print_progress(self, progress):
-        logger.info(f'导出进度：{progress * 100:.2f}%')
+        print(f'导出进度: {progress * 100:.2f}%')
         # print()
 
     def finish(self, success):
