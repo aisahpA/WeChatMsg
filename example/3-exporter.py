@@ -21,6 +21,7 @@ from wxManager import DatabaseConnection, MessageType
 from wxManager.db_main import DataBaseInterface
 from wxManager.log import logger
 from wxManager.model import Contact
+from export_count_info import add_count_info_to_excel
 
 
 def export_one():
@@ -64,14 +65,27 @@ def export_all():
 
     contacts = database.get_contacts()  # 查找所有联系人
     contacts = sorted(contacts, key=lambda x: x.wxid, reverse=False)
+
+    # 中断后从指定联系人开始导出。程序运行一段时间后不知什么原因会停止掉。
+    process_from_now = True
+    target_wxid = ''
+
     for contact in contacts:
+        # 当遇到目标联系人时，开始处理后续所有联系人
+        if contact.wxid == target_wxid:
+            process_from_now = True
+        
+        # 如果还没到目标联系人，跳过
+        if not process_from_now:
+            continue
+
         # 跳过公众号和OpenIM
         if contact.is_public() or contact.is_open_im() or contact.wxid in not_export_wxids:
             continue
         _export_one_contact(database, contact, output_dir, 
                             message_types=message_types,
                             time_range=time_range,
-                            is_split_by_year=True)
+                            is_split_by_year=False)
        
     et = time.time()
     logger.info(f'\n{'=' * 30}全部导出完成, 耗时：{et - st:.2f}s')
@@ -150,6 +164,8 @@ def _export_by_messages(
     # ExcelExporter(database, contact, output_dir=output_dir, messages=messages).start()
     # DocxExporter(database, contact, output_dir=output_dir, messages=messages).start()
 
+    # 统计导出信息，保存到Excel中
+    add_count_info_to_excel(html_export.count_info)
 
 
 if __name__ == '__main__':

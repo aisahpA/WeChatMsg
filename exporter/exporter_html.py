@@ -230,6 +230,13 @@ class HtmlExporter(ExporterBase):
                 server_id_Page[str(server_id)] = curpage
                 server_id_Idx[str(server_id)] = select_msg_cnt - 1
 
+        self.count_info.update({
+            'image_count': len(image_tasks),
+            'video_count': len(video_tasks), 
+            'file_count': len(file_tasks), 
+            'audio_count': len(audio_tasks)
+        })
+
         logger.info(f'解析图片: {len(image_tasks)}')
         # 使用多进程，导出所有图片
         decode_image_results = batch_decode_image_multiprocessing(Me().xor_key, image_tasks)
@@ -291,7 +298,7 @@ class HtmlExporter(ExporterBase):
             json.dump(html_json, f, ensure_ascii=False, indent=4)
 
         # self.update_progress_callback(1)
-        logger.info(f"【完成导出 HTML {self.contact.remark}】{len(messages)}条消息")
+        logger.info(f"【完成导出 HTML {self.contact.remark}({self.contact.wxid})】")   
         # self.finish_callback(self.exporter_id)
 
     def udpate_image_ext(self, decode_image_results, messages):
@@ -301,11 +308,13 @@ class HtmlExporter(ExporterBase):
         if not decode_image_results: return
 
         def update_image_path(msg, ext):
-            if not ext: return
-            msg.file_name = msg.file_name + '.' + ext
+            if not ext or not msg.file_name:
+                return
+            ext_with_dot = '.' + ext
+            msg.file_name = msg.file_name + ext_with_dot
             msg.file_type = ext
-            msg.path = msg.path + '.' + ext
-            msg.thumb_path = msg.thumb_path + '.' + ext
+            msg.path = msg.path + ext_with_dot
+            msg.thumb_path = msg.thumb_path + ext_with_dot
 
         def update_merged_image_ext(merged_message, image_name_ext_dict):
             for msg in merged_message.messages:

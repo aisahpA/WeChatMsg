@@ -137,6 +137,7 @@ class ExporterBase(ExporterBaseBase):
         self.output_dir = output_dir
         self.messages = messages
         self.origin_path = ''
+        self.count_info = {}
 
     def print_progress(self, progress):
         print(f'导出进度: {progress * 100:.2f}%')
@@ -180,10 +181,20 @@ class ExporterBase(ExporterBaseBase):
             return time.strftime('%Y%m%d', time.localtime(timestamp))
         
         # 设置文件夹的名称
-        begin_time_str = get_simple_time_str(self.messages[0].timestamp)
+        start_time_str = get_simple_time_str(self.messages[0].timestamp)
         end_time_str = get_simple_time_str(self.messages[-1].timestamp)
-        folder_name = f'{end_time_str}-{begin_time_str}_{self.contact.remark}({self.contact.wxid})'
+        folder_name = f'{end_time_str}-{start_time_str}_{self.contact.remark}({self.contact.wxid})'
         self.origin_path = os.path.join(self.output_dir, '聊天记录', folder_name)
+
+        self.count_info.update({
+            'wxid': self.contact.wxid,
+            'contact_remark': self.contact.remark,
+            'output_dir': self.output_dir,
+            'origin_path': self.origin_path,
+            'message_count': len(self.messages),
+            'start_time_str': start_time_str,
+            'end_time_str': end_time_str
+        })
 
         # 创建所有文件夹
         makedirs(self.origin_path)

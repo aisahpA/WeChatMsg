@@ -38,6 +38,7 @@ def copy_files_batch(file_tasks: List[Tuple[str, str]]):
 
 def copy_files_by_type(src_dir: str,
                         dst_dir: str,
+                        save_by_month: bool,
                         target_folder: str):
     """
     复制导出的每个聊天记录中 image、video 文件夹中的内容到目标文件，并按年分组
@@ -45,6 +46,7 @@ def copy_files_by_type(src_dir: str,
     Args:
         src_dir (str): 源文件夹路径
         dst_dir (str): 目标文件夹路径
+        save_by_month (bool, optional): 是否按年月保存文件. 为False时按年保存文件
         target_folder (str): 目标文件夹名称, image or video
     """
     if not os.path.exists(src_dir) or not os.path.isdir(src_dir):
@@ -62,7 +64,10 @@ def copy_files_by_type(src_dir: str,
             for filename in files:
                 try:
                     source_path = os.path.join(root, filename)
-                    dest_path = os.path.join(dst_dir, target_folder, year_folder, year_month_folder, filename)
+                    if save_by_month:
+                        dest_path = os.path.join(dst_dir, target_folder, year_folder, year_month_folder, filename)
+                    else:
+                        dest_path = os.path.join(dst_dir, target_folder, year_folder, filename)
                     copy_tasks.append((source_path, dest_path))
                 except Exception as e:
                     print(f"警告: 构建路径时出错 {filename}: {e}")
@@ -79,5 +84,5 @@ def copy_files_by_type(src_dir: str,
 if __name__ == "__main__":
     src_dir = '' # 源文件夹路径
     dst_dir = '' # 目标文件夹路径
-    copy_files_by_type(src_dir, dst_dir, 'image')
-    copy_files_by_type(src_dir, dst_dir, 'video')
+    copy_files_by_type(src_dir, dst_dir, True, 'image')
+    copy_files_by_type(src_dir, dst_dir, False, 'video')
