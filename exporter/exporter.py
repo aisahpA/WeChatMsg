@@ -636,6 +636,9 @@ def copy_files(file_tasks: List[Tuple[str, str, str]]):
     futures = []
     with ThreadPoolExecutor(max_workers=10) as executor:
         for source_file, output_dir, dst_name in file_tasks:
+            # 源文件不存在，不用拷贝
+            if not os.path.isfile(source_file):
+                continue
             if dst_name:
                 ext = os.path.basename(source_file).split('.')[-1]
                 destination_file = os.path.join(output_dir, f'{dst_name}.{ext}')
@@ -664,6 +667,9 @@ def get_ffmpeg_path():
 
 
 def decode_audio_to_mp3(media_buffer, output_dir, filename):
+    buf = media_buffer
+    if not buf:
+        return ''
     silk_path = f"{output_dir}/{filename}.silk"
     pcm_path = f"{output_dir}/{filename}.pcm"
     mp3_path = f"{output_dir}/{filename}.mp3"
@@ -671,9 +677,11 @@ def decode_audio_to_mp3(media_buffer, output_dir, filename):
         return mp3_path
     if not os.path.exists(output_dir):
         os.makedirs(output_dir, exist_ok=True)
-    buf = media_buffer
-    if not buf:
-        return ''
+    
+    # 将 buf 开头的 #!AMR\n 删除掉（如果存在）。
+    # 电脑端显示‘最近的语音不会同步’，再通过手机端迁移聊天记录，就会出现这个奇怪的开头
+    buf = buf.lstrip(b'#!AMR\n')
+    
     with open(silk_path, "wb") as f:
         f.write(buf)
     # open(silk_path, "wb").write()
@@ -730,6 +738,8 @@ def decode_audios(file_tasks: List[Tuple[str, str, str]]):
     with ThreadPoolExecutor(max_workers=10) as executor:
         futures = []
         for media_buffer, output_dir, dst_name in file_tasks:
+            if not media_buffer:
+                continue
             futures.append(executor.submit(decode_audio_to_mp3, media_buffer, output_dir, dst_name))
 
         # 等待所有任务完成

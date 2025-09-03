@@ -68,6 +68,20 @@ def parser_voip(xml_content):
         xml_content = xml_content.strip()
         xml_dict = xmltodict.parse(f'<voipdata>{xml_content}</voipdata>')
         dic = xml_dict.get('voipdata', {})
+        if dic == '7':
+            result = {
+                'invite_type': 1,
+                'duration': 0,
+                'display_content': '已在其他设备接听'
+            }
+            return
+        elif dic == '5':
+            result = {
+                'invite_type': 1,
+                'duration': 0,
+                'display_content': '对方已取消'
+            }
+            return
         type_ = dic.get('voipmsg', {}).get('@type')
         duration = 0
         if type_ == 'VoIPBubbleMsg':
@@ -83,7 +97,7 @@ def parser_voip(xml_content):
             'display_content': display_content
         }
     except:
-        logger.error(traceback.format_exc())
+        logger.error(f'视频音频通话解析错误\n{traceback.format_exc()} \n{xml_content}')
     finally:
         return result
 
@@ -652,6 +666,10 @@ def parser_position(xml_content):
         'poiname': '',  # 位置点标记名
         'scale': '0',  # 缩放率
     }
+    # 移除<msg>前面的转发微信ID（如果存在）
+    if xml_content.index('<msg>') > 0:
+        xml_content = xml_content[xml_content.index('<msg>'):]
+
     try:
         data = xmltodict.parse(xml_content)
         if data and data.get('msg'):
