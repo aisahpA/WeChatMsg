@@ -1221,6 +1221,9 @@ def wx_collection_data(xml):
         template_id = dic_data.get('template_id', '')
         line_content = template_detail.get('line_content', {})
         money = line_content.get('topline', {}).get('value', {}).get('word', '').strip('￥')
+        if money.replace('.', '', 1).isdigit():
+            money = float(money)
+        lines = line_content.get('lines', {}).get('line')
         lines = line_content.get('lines', {}).get('line')
         if isinstance(lines, List):
             for line in lines:
@@ -1255,7 +1258,9 @@ def wx_pay_data(xml):
         # logger.error(dic_data)
         mmreader = dic_data.get('mmreader', {})
         template_header = mmreader.get('template_header', {})
+        template_header = template_header if isinstance(template_header, dict) else {}
         template_detail = mmreader.get('template_detail', {})
+        template_detail = template_detail if isinstance(template_detail, dict) else {}
         title = template_header.get('title', '')
         display_name = template_header.get('display_name', '')
         if not title:
@@ -1264,7 +1269,9 @@ def wx_pay_data(xml):
             display_name = dic_data.get('title')
         template_id = dic_data.get('template_id', '')
         line_content = template_detail.get('line_content', {})
-        money = line_content.get('topline', {}).get('value', {}).get('word', '').strip('￥')
+        money = line_content.get('topline', {}).get('value', {}).get('word', '').strip('￥').strip('¥')
+        if money.replace('.', '', 1).isdigit():
+            money = float(money)
         lines = line_content.get('lines', {}).get('line')
         payment_type = ''
         acquiring_institution = ''

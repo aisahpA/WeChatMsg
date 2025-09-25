@@ -433,151 +433,144 @@ class ExcelExporter(ExporterBase):
         self.finish_callback(self.exporter_id)
         print(f"【完成导出 XLSX {self.contact.remark}】")
 
-    def wx_pay(self):
-        from openpyxl.styles import Font
-        import openpyxl
-        from openpyxl.drawing.image import Image
-        from openpyxl.utils import get_column_letter
-        Image.MAX_IMAGE_PIXELS = None
-        logger.info(f"【开始导出 XLSX {self.contact.remark}】")
+
+    def _init_time_file_name(self):
+        if not self.origin_path:
+            self.origin_path = self.output_dir
         os.makedirs(self.origin_path, exist_ok=True)
-        filename = os.path.join(self.origin_path, f"{self.contact.remark}.xlsx")
-        filename = get_new_filename(filename)
+
+        def get_simple_time_str(timestamp):
+            return time.strftime('%Y%m%d', time.localtime(timestamp))
+        
+        # 设置文件的名称-包含时间范围
+        start_time_str = get_simple_time_str(self.messages[0].timestamp)
+        end_time_str = get_simple_time_str(self.messages[-1].timestamp)
+        file_name = f'{self.contact.remark}（{start_time_str}-{end_time_str}）.xlsx'
+        return os.path.join(self.origin_path, f"{file_name}")
+
+    def wx_pay(self):
+        import openpyxl
+        from openpyxl.utils import get_column_letter
+        
+        logger.info(f"【开始导出 XLSX {self.contact.remark}】")
+        filename = self._init_time_file_name()
         columns = ['类型', '收款单位', '日期', '时间', '金额', '付款方式', '收单机构', '更多信息']
         # messages = self.database.get_messages(self.contact.wxid, time_range=self.time_range)
         messages = self.messages
         new_workbook = openpyxl.Workbook()
-        new_sheet = new_workbook.create_sheet("聊天记录", 0)
+        new_sheet = new_workbook.create_sheet("支付记录", 0)
         new_sheet.append(columns)
-        total_num = len(messages)
         for index, message in enumerate(messages):
             if not self._is_running:
                 break
-            if index % 1000 == 0:
-                self.update_progress_callback(index / total_num)
-            # if not message.type in {MessageType.LinkMessage}:
-            #     continue
             try:
                 card_data = wx_pay_data(message.xml_content)
-                date, str_time = message.str_time.split(' ')
-                if card_data.get('title') in {'记账日报', '「先享后付」服务使用通知', '转入零钱通，五一享收益',
-                                              '转入零钱通，端午享收益', '智能手表支付服务已启用', '优惠券领取提醒',
-                                              '清明假期收益规则', '「先享后付」服务完成通知', '礼包领取提醒',
-                                              '五一假期收益规则提醒', '端午节假期收益规则', '中秋节假期收益规则',
-                                              '元旦假期收益规则', '春节假期收益规则', '五一假期收益规则',
-                                              '中秋及国庆假期收益规则', '春节赚收益攻略', '「先享后付」服务取消通知',
-                                              '揭开骗局，远离诈骗'}:
+                money = card_data.get('money')
+                if not money or not isinstance(money, (int, float)):
                     continue
+                date, str_time = message.str_time.split(' ')  
                 new_sheet.append(
                     [
                         card_data.get('title'), card_data.get('display_name'), date, str_time,
-                        card_data.get('money'), card_data.get('payment_type'), card_data.get('acquiring_institution'),
+                        money, card_data.get('payment_type'), card_data.get('acquiring_institution'),
                         card_data.get('more')
                     ]
                 )
             except:
                 logger.error(traceback.format_exc())
                 continue
-        # 获取列的字母表示（A、B、C...）
-        col_letter = get_column_letter(1)
-        # 设置整列的单元格格式为文本
+        
+        # 设置金额列的格式为两位小数
+        col_letter = get_column_letter(5)
         for cell in new_sheet[col_letter]:
-            cell.number_format = "@"  # "@" 表示文本格式
+            cell.number_format = "#,##0.00"
+        # 设置每列的宽度
+        for i, column_title in enumerate(columns, 1):
+            col_letter = get_column_letter(i)
+            new_sheet.column_dimensions[col_letter].width = 16
+        
         try:
             new_workbook.save(filename)
         except PermissionError:
             filename = '.'.join(filename.split('.')[:-1]) + str(int(time.time())) + '.xlsx'
             new_workbook.save(filename)
-        # self.update_progress_callback(1)
         # self.finish_callback(self.exporter_id)
         logger.info(f"【完成导出 XLSX {self.contact.remark}】")
 
     def wx_collect(self):
-        from openpyxl.styles import Font
         import openpyxl
-        from openpyxl.drawing.image import Image
         from openpyxl.utils import get_column_letter
-        Image.MAX_IMAGE_PIXELS = None
 
         logger.info(f"【开始导出 XLSX {self.contact.remark}】")
-        os.makedirs(self.origin_path, exist_ok=True)
-        filename = os.path.join(self.origin_path, f"{self.contact.remark}.xlsx")
-        filename = get_new_filename(filename)
+        filename = self._init_time_file_name()
         columns = ['类型', '日期', '时间', '金额', '详细信息', '汇总', '备注', '更多信息']
         # messages = self.database.get_messages(self.contact.wxid, time_range=self.time_range)
         messages = self.messages
         new_workbook = openpyxl.Workbook()
-        new_sheet = new_workbook.create_sheet("聊天记录", 0)
+        new_sheet = new_workbook.create_sheet("收款记录", 0)
         new_sheet.append(columns)
-        total_num = len(messages)
         for index, message in enumerate(messages):
             if not self._is_running:
                 break
-            if index % 1000 == 0:
-                self.update_progress_callback(index / total_num)
-            # if not message.type in {MessageType.LinkMessage}:
-            #     continue
             try:
                 card_data = wx_collection_data(message.xml_content)
-                date, str_time = message.str_time.split(' ')
+                if not card_data.get('money'):
+                    continue
+                date, str_time = message.str_time.split(' ')               
                 new_sheet.append(
                     [
-                        card_data.get('title'), date, str_time, card_data.get('money'), card_data.get('display_name'),
+                        card_data.get('title'), date, str_time, card_data.get('money'), 
+                        card_data.get('display_name'),
                         card_data.get('summary'), card_data.get('more')
                     ]
                 )
             except:
                 logger.error(traceback.format_exc())
                 continue
-        # 获取列的字母表示（A、B、C...）
-        col_letter = get_column_letter(1)
-        # 设置整列的单元格格式为文本
+        
+        # 设置金额列的格式为两位小数
+        col_letter = get_column_letter(4)
         for cell in new_sheet[col_letter]:
-            cell.number_format = "@"  # "@" 表示文本格式
+            cell.number_format = "#,##0.00"
+        # 设置每列的宽度
+        for i, column_title in enumerate(columns, 1):
+            col_letter = get_column_letter(i)
+            new_sheet.column_dimensions[col_letter].width = 18
+        
         try:
             new_workbook.save(filename)
         except PermissionError:
             filename = '.'.join(filename.split('.')[:-1]) + str(int(time.time())) + '.xlsx'
             new_workbook.save(filename)
-        # self.update_progress_callback(1)
         # self.finish_callback(self.exporter_id)
         logger.info(f"【完成导出 XLSX {self.contact.remark}】")
 
     def wx_sport(self):
-        from openpyxl.styles import Font
         import openpyxl
-        from openpyxl.drawing.image import Image
         from openpyxl.utils import get_column_letter
-        Image.MAX_IMAGE_PIXELS = None
-
 
         logger.info(f"【开始导出 XLSX {self.contact.remark}】")
-        os.makedirs(self.origin_path, exist_ok=True)
-        filename = os.path.join(self.origin_path, f"{self.contact.remark}.xlsx")
-        filename = get_new_filename(filename)
+        filename = self._init_time_file_name()
         columns = ['日期', '排名', '步数', '当日冠军', '当日冠军步数', '更多信息']
         # messages = self.database.get_messages(self.contact.wxid, time_range=self.time_range)
         messages = self.messages
         new_workbook = openpyxl.Workbook()
-        new_sheet = new_workbook.create_sheet("聊天记录", 0)
+        new_sheet = new_workbook.create_sheet("运动记录", 0)
         new_sheet.append(columns)
-        total_num = len(messages)
         for index, message in enumerate(messages):
             if not self._is_running:
                 break
-            if index and index % 1000 == 0:
-                self.update_progress_callback(index / total_num)
-            # if not message.type in {MessageType.LinkMessage}:
-            #     continue
             try:
                 card_data = wx_sport(message.xml_content)
+                if not card_data.get('rank'):
+                    continue
                 champion_name = ''
                 if not card_data.get('rank_list'):
                     champion = {}
                 else:
                     champion = card_data.get('rank_list')[0]
                     contact = self.database.get_contact_by_username(champion.get('username'))
-                    champion_name = contact.remark
+                    champion_name = contact.remark 
                 new_sheet.append(
                     [
                         message.str_time.split(' ')[0], card_data.get('rank'), card_data.get('score'),
@@ -587,17 +580,29 @@ class ExcelExporter(ExporterBase):
             except:
                 logger.error(traceback.format_exc())
                 continue
-        # 获取列的字母表示（A、B、C...）
-        col_letter = get_column_letter(1)
-        # 设置整列的单元格格式为文本
-        for cell in new_sheet[col_letter]:
-            cell.number_format = "@"  # "@" 表示文本格式
+        
+        # 设置排名、步数、当日冠军步数列的格式为整数
+        format_columns = [2, 3, 5]  # 需要设置整数格式的列号
+        for col_num in format_columns:
+            col_letter = get_column_letter(col_num)
+            for row_num, cell in enumerate(new_sheet[col_letter], 1):
+                # 只对数据行设置格式，跳过标题行
+                if row_num > 1:
+                    if isinstance(cell.value, (int, float)):
+                        cell.number_format = "0"  # 整数格式
+                    elif isinstance(cell.value, str) and cell.value.isdigit():
+                        cell.value = int(cell.value)
+                        cell.number_format = "0"
+        # 设置每列的宽度
+        for i, column_title in enumerate(columns, 1):
+            col_letter = get_column_letter(i)
+            new_sheet.column_dimensions[col_letter].width = 18
+        
         try:
             new_workbook.save(filename)
         except PermissionError:
             filename = '.'.join(filename.split('.')[:-1]) + str(int(time.time())) + '.xlsx'
             new_workbook.save(filename)
-        # self.update_progress_callback(1)
         # self.finish_callback(self.exporter_id)
         logger.info(f"【完成导出 XLSX {self.contact.remark}】")
 

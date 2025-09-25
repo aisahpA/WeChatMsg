@@ -36,6 +36,7 @@ def export_one():
     wxid = ''  # 要导出好友的wxid
     message_types = [] # 导出的消息类型 MessageType，默认全部类型
     time_range=[] # ['2025-01-01 00:00:00', '2025-12-31 23:59:59']  # 要导出的日期范围，默认全导出
+    is_split_by_year = False
 
     # 导出消息
     conn = DatabaseConnection(db_dir, db_version)  # 创建数据库连接
@@ -44,7 +45,7 @@ def export_one():
     _export_one_contact(database, contact, output_dir, 
                         message_types=message_types, 
                         time_range=time_range,
-                        is_split_by_year=True)
+                        is_split_by_year=is_split_by_year)
 
 def export_all():
     """
@@ -168,7 +169,28 @@ def _export_by_messages(
     add_count_info_to_excel(html_export.count_info)
 
 
+def export_special_excle():
+    """
+    导出特殊格式的Excel
+    """
+
+    db_dir = ''  # 解析后的数据库路径，例如：./wxid_xxxx/Msg
+    db_version = 3  # 数据库版本，4 or 3
+    output_dir = ''  # 输出文件夹
+
+    # 特殊的微信ID集合: 微信支付、微信运动、微信收款助手
+    special_wxids = ['gh_3dfda90e39d6', 'gh_43f2581f6fd6', 'gh_f0a92aa7146c']
+
+    conn = DatabaseConnection(db_dir, db_version)
+    database = conn.get_interface()
+    for wxid in special_wxids:
+        contact = database.get_contact_by_username(wxid)
+        messages = database.get_messages(contact.wxid)
+        ExcelExporter(database, contact, output_dir=output_dir, messages=messages).export()
+
+
 if __name__ == '__main__':
     freeze_support()
     export_one()
     # export_all()
+    # export_special_excle()
